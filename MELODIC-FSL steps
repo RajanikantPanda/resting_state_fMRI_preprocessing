@@ -1,0 +1,81 @@
+Resting fMRI Preprocessing Pipeline based on MELODIC-FSL
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+###1.  Prepare the data (i.e., arrange in a folder) for the Pre-processing (create the .nii and reorient)
+# Create folder for each group (i.e., control, patients), for each group, create folders for each subject. Inside the each subject folder keep T1 and Rest-fMRI datas (.img or .nii format) in the separate folder. Like below structure
+                   
+ 
+# Create T1 file to a nifti_gz file with the T1 and reorient for each subjects using below command: 
+
+fslchfiletype NIFTI_GZ *hdr T1_a
+fslreorient2std T1_a.nii.gz T1_a_r.nii.gz
+
+# Create FMRI 4D nifti_gz file and reorient for each subjects using below command: 
+  
+cd ../rest
+fslmerge -t rest.nii.gz *.img
+fslmerge -tr restTR2.nii.gz rest.nii.gz 2
+fslreorient2std restTR2.nii.gz restTR2_r.nii.gz
+
+# Do BET extraction for T1 
+
+bet T1_a_r.nii.gz T1_a_r_brain.nii.gz -R -f 0.15 -g 0 -m
+
+# Improve Brain extracted mask by fsleye 
+# To improving the BET, open fsleyes and then opent the mask then clean it. Then, save the mask with the same name
+cd ../mprage
+fsleyes T1_a_r T1_a_r_brain_mask
+
+#OR use SPM segmentation to generate brain extracted mask (this approach is automated and easyer)
+
+
+# Then multiply the mask with reoriented T1 images to get proper brain extracted image 
+
+fslmaths T1_a_r_brain_mask -mul T1_a_r_brain T1_a_r_brain2
+#-or-
+fslmaths T1_a_r_spm_brain_mask -mul T1_a_r.nii.gz T1_a_r_brain2
+
+
+
+
+###2. RUN the MELODIC: open fsl gui, then go to MELODIC 
+
+You can select all the subjects at a time. Be care full the fMRI data and T1 data must be in the same sequence. 
+
+Mics: No change
+DATA= select all the data (using “select 4D data option”) of all the subjects in one Group, The TR will detect automatically as per your data, the filter 100 (default)
+Pre-State=yes, Slice Timing correction = interleaved, Motion Correction = MCFLIRT, Intencity Norm = Yes, rest is default
+Registration=”click on main structural image” and sellect structural image for all subjects (using “select main structural images option”). Select Linear=6 DOF. Rest is defaukt
+Stats= Keep all default
+Post-Stats= Keep all default
+Hit RUN
+
+#OUTPUT: melodic.ica and it will appear a window with all the details of the preprocessing. In pre-stats check the movement and check the registration done well or not  
+
+
+
+###3. In order to remove the noise we use Fsleyes, Check the ICAs to mark noise ics and regress out the noise components
+# To check the ICAs to mark noise and signal manually use below comand, it will open with fsleyes. mark the ICs 
+# and save the lavbels in the same folder wirth name "hand_labels_noise.txt" 
+
+fsleyes --scene melodic -ad restTR2_r.ica/filtered_func_data.ica
+
+# To Regress out the noise components
+
+#get the IC numbers
+tail -1 restTR2_r.ica/hand_labels_noise.txt
+
+#run fsl_regfilt
+fsl_regfilt -i restTR2_r.ica/filtered_func_data.nii.gz \
+            -d restTR2_r.ica/filtered_func_data.ica/melodic_mix \
+            -o restTR2_r.ica/filtered_func_data_clean.nii.gz \
+            -f "1, 2, 3, ...." 
+
+
+
+#OUTPUT: it will creat cleaned 4D data named "filtered_func_data_clean.nii.gz"
+
+
+### 5. func_data_clean.nii.gz.nii is your cleaned data on which you can extract the BOLD time series and could do the post processing. 
+
+
